@@ -26,7 +26,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Vite app with production env vars
         run: npm run build
@@ -41,9 +41,9 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_MUSHROOM_043B2AB1E }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "/"
+          app_location: "dist"
           api_location: ""
-          output_location: "dist"
+          output_location: ""
           skip_app_build: true
 
   close_pull_request_job:
