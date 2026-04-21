@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:7071/api";
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 
 export function useEvents(limit = 50) {
   const [events, setEvents] = useState([]);
@@ -13,7 +14,10 @@ export function useEvents(limit = 50) {
     setError(null);
     
     try {
-      const url = `${API_BASE}/get-events?limit=${limit}`;
+      // Construir URL con key si existe (producción) o sin key (localhost)
+      const keyParam = API_KEY ? `&code=${API_KEY}` : "";
+      const url = `${API_BASE}/get-events?limit=${limit}${keyParam}`;
+      
       const response = await fetch(url);
       
       if (!response.ok) {
