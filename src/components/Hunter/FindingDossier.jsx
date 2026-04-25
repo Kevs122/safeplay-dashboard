@@ -1,8 +1,48 @@
 import { useState } from "react";
-import { X, Shield, AlertOctagon, FileText, Send, CheckCircle2, ExternalLink, Eye, Loader2 } from "lucide-react";
+import { X, Shield, AlertOctagon, FileText, Send, CheckCircle2, ExternalLink, Eye, Loader2, Flame } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:7071/api";
 const API_KEY = import.meta.env.VITE_API_KEY || "";
+
+// Diccionario semiotico para decodificar emojis
+const SEMIOTIC_DICT = {
+  "🥷": { name: "NINJA", meaning: "Operadores cartel encapuchados" },
+  "🪖": { name: "CASCO", meaning: "Personas armadas, vestimenta militar" },
+  "😈": { name: "DIABLO", meaning: "Amenaza / mal" },
+  "👹": { name: "OGRO", meaning: "Variante diablo, asociado a Makabelico" },
+  "🧿": { name: "OJO TURCO", meaning: "Referencia a la maña" },
+  "🍕": { name: "PIZZA", meaning: "Cartel de Sinaloa - faccion Chapo (CHAPIZZA)" },
+  "🐓": { name: "GALLO", meaning: "CJNG - El Mencho (Señor de los Gallos)" },
+  "🆖": { name: "NG", meaning: "CJNG (Nueva Generacion)" }
+};
+
+const CARTEL_INFO = {
+  CJNG: {
+    name: "Cartel Jalisco Nueva Generacion",
+    leader: "Nemesio Oseguera Cervantes 'El Mencho'",
+    color: "from-red-700 to-red-900"
+  },
+  CARTEL_SINALOA: {
+    name: "Cartel de Sinaloa",
+    leader: "Joaquin Guzman 'El Chapo' / Los Chapitos",
+    color: "from-purple-700 to-purple-900"
+  },
+  "LA_MAÑA": {
+    name: "Referencia general 'La Maña'",
+    leader: "Termino genérico para cartel",
+    color: "from-amber-700 to-amber-900"
+  },
+  CARTEL_GOLFO: {
+    name: "Cartel del Golfo",
+    leader: "Diversa estructura regional",
+    color: "from-blue-700 to-blue-900"
+  },
+  FAMILIA: {
+    name: "La Familia Michoacana",
+    leader: "Estructura regional Michoacan",
+    color: "from-green-700 to-green-900"
+  }
+};
 
 function getScoreColor(score) {
   if (score >= 85) return "text-red-400";
@@ -77,6 +117,8 @@ export default function FindingDossier(props) {
   const severityBadge = getSeverityBadge(finding.severity);
   const statusInfo = getStatusBadge(currentStatus);
   const hasThumbnail = finding.video_thumbnail && !finding.azure_filter_triggered;
+  const detectedEmojis = finding.detected_emojis || [];
+  const cartelInfo = CARTEL_INFO[finding.cartel_attribution] || null;
 
   function showToast(type, message) {
     setToast({ type: type, message: message });
@@ -97,9 +139,7 @@ export default function FindingDossier(props) {
         })
       });
       
-      if (!response.ok) {
-        throw new Error("HTTP " + response.status);
-      }
+      if (!response.ok) throw new Error("HTTP " + response.status);
       
       setCurrentStatus(newStatus);
       showToast("success", actionLabel);
@@ -125,12 +165,12 @@ export default function FindingDossier(props) {
   function reportToTikTok() {
     if (finding.video_url) {
       window.open(finding.video_url, "_blank");
-      showToast("info", "Abriendo video en TikTok para reportar");
+      showToast("info", "Abriendo TikTok para reportar");
       setTimeout(function() {
         updateStatus("reported", "Marcado como reportado a TikTok");
       }, 1000);
     } else {
-      showToast("error", "No hay URL del video para reportar");
+      showToast("error", "No hay URL del video");
     }
   }
 
@@ -170,7 +210,7 @@ export default function FindingDossier(props) {
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="text-fuchsia-400" size={18} />
                 <span className="text-xs text-fuchsia-300 font-bold tracking-widest">
-                  DOSSIER DE EVIDENCIA - 707 INTELLIGENCE
+                  707 PREDATOR HUNTER + DECODER
                 </span>
               </div>
               <h2 className="text-2xl font-bold text-slate-100">
@@ -198,6 +238,69 @@ export default function FindingDossier(props) {
         </div>
 
         <div className="p-6 space-y-6">
+          
+          {/* CARTEL ATTRIBUTION BOX - destacado si hay */}
+          {cartelInfo ? (
+            <div className={"rounded-xl border-2 p-5 bg-gradient-to-br " + cartelInfo.color + " border-red-500/60"}>
+              <div className="flex items-center gap-2 mb-3">
+                <Flame className="text-yellow-400" size={20} />
+                <span className="text-xs text-white font-bold tracking-widest">
+                  ATRIBUCION DE CARTEL CONFIRMADA
+                </span>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-1">
+                {cartelInfo.name}
+              </h3>
+              <p className="text-sm text-white/80 mb-3">
+                Lider/Estructura: {cartelInfo.leader}
+              </p>
+              {finding.cartel_faction ? (
+                <p className="text-sm text-yellow-200 font-semibold">
+                  Faccion identificada: {finding.cartel_faction}
+                </p>
+              ) : null}
+              {detectedEmojis.length > 0 ? (
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  <div className="text-xs text-white/70 mb-2 font-semibold">FIRMA SEMIOTICA:</div>
+                  <div className="text-3xl tracking-widest">
+                    {detectedEmojis.join("  ")}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* SEMIOTIC DECODER - tabla de emojis decodificados */}
+          {detectedEmojis.length > 0 ? (
+            <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/20 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Flame className="text-fuchsia-400" size={18} />
+                <h3 className="text-sm font-bold text-fuchsia-300 tracking-wider">
+                  CODIGO SEMIOTICO DECODIFICADO
+                </h3>
+                <span className="px-2 py-0.5 bg-fuchsia-500/20 text-fuchsia-200 text-xs font-bold rounded border border-fuchsia-500/30">
+                  {detectedEmojis.length} emojis cartelarios
+                </span>
+              </div>
+              <div className="space-y-2">
+                {detectedEmojis.map(function(emoji, i) {
+                  const info = SEMIOTIC_DICT[emoji];
+                  if (!info) return null;
+                  return (
+                    <div key={i} className="flex items-center gap-3 p-3 bg-slate-950/60 rounded-lg border border-slate-800">
+                      <span className="text-3xl">{emoji}</span>
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-fuchsia-200">{info.name}</div>
+                        <div className="text-xs text-slate-400">{info.meaning}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {/* SCORE + THUMBNAIL */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
               <div className="text-xs text-slate-400 font-semibold tracking-wider mb-2">
@@ -213,6 +316,11 @@ export default function FindingDossier(props) {
                 ></div>
               </div>
               <div className="text-xs text-slate-500">{finding.category}</div>
+              {finding.official_category && finding.official_category !== "NINGUNA" ? (
+                <div className="mt-2 px-2 py-1 bg-orange-500/20 text-orange-300 text-xs font-bold rounded border border-orange-500/30 text-center">
+                  {finding.official_category.replace(/_/g, " ")}
+                </div>
+              ) : null}
             </div>
 
             <div className="md:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
@@ -243,14 +351,26 @@ export default function FindingDossier(props) {
                     AZURE CONTENT FILTER DETECTADO
                   </div>
                   <div className="text-xs text-red-400">
-                    Este contenido fue clasificado como de severidad ALTA por el sistema de moderacion de Microsoft Azure.
-                    Indica presencia de violencia, contenido sexual o material danino que requiere intervencion inmediata.
+                    Microsoft Azure clasifico este contenido como severidad ALTA: violencia, contenido sexual o material daninto que requiere intervencion inmediata.
                   </div>
                 </div>
               </div>
             </div>
           ) : null}
 
+          {/* PEDAGOGIA CRIMINAL */}
+          {finding.pedagogia_criminal && finding.pedagogia_criminal !== "NINGUNA" ? (
+            <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4">
+              <div className="text-xs font-bold text-orange-300 tracking-wider mb-1">
+                PEDAGOGIA CRIMINAL DETECTADA
+              </div>
+              <div className="text-sm text-orange-200 font-semibold">
+                {finding.pedagogia_criminal.replace(/_/g, " ")}
+              </div>
+            </div>
+          ) : null}
+
+          {/* ANALISIS IA */}
           <div className="rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-900/10 to-slate-900/60 p-5">
             <div className="flex items-center gap-2 mb-3">
               <Eye className="text-fuchsia-400" size={18} />
@@ -280,6 +400,7 @@ export default function FindingDossier(props) {
             ) : null}
           </div>
 
+          {/* METRICS */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
               <div className="text-xs text-slate-500 mb-1">Followers</div>
@@ -307,6 +428,7 @@ export default function FindingDossier(props) {
             </div>
           </div>
 
+          {/* DETALLES POST */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
             <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-3">
               DETALLES DEL POST
@@ -320,7 +442,7 @@ export default function FindingDossier(props) {
               </div>
               {finding.hashtags_detected && finding.hashtags_detected.length > 0 ? (
                 <div>
-                  <div className="text-xs text-slate-500 mb-1">Hashtags detectados:</div>
+                  <div className="text-xs text-slate-500 mb-1">Hashtags:</div>
                   <div className="flex flex-wrap gap-1">
                     {finding.hashtags_detected.map(function(h, i) {
                       return (
@@ -328,6 +450,12 @@ export default function FindingDossier(props) {
                       );
                     })}
                   </div>
+                </div>
+              ) : null}
+              {finding.music_detected ? (
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">Musica:</div>
+                  <div className="text-slate-300">{finding.music_detected}</div>
                 </div>
               ) : null}
               {finding.video_url ? (
@@ -362,7 +490,7 @@ export default function FindingDossier(props) {
           <button
             onClick={generateDossier}
             disabled={loadingAction !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+            className="flex items-center gap-2 px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
           >
             <FileText size={16} />
             Generar Reporte PDF
@@ -370,7 +498,7 @@ export default function FindingDossier(props) {
           <button
             onClick={reportToTikTok}
             disabled={loadingAction !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
           >
             {loadingAction === "reported" ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Reportar a TikTok
@@ -378,7 +506,7 @@ export default function FindingDossier(props) {
           <button
             onClick={escalateAuthorities}
             disabled={loadingAction !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
           >
             {loadingAction === "escalated" ? <Loader2 size={16} className="animate-spin" /> : <AlertOctagon size={16} />}
             Escalar a Autoridades
@@ -386,7 +514,7 @@ export default function FindingDossier(props) {
           <button
             onClick={markFalsePositive}
             disabled={loadingAction !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 text-sm rounded-lg transition"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-sm rounded-lg transition"
           >
             {loadingAction === "false_positive" ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
             Falso Positivo
