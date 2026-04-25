@@ -1,4 +1,8 @@
-import { X, Shield, AlertOctagon, FileText, Send, CheckCircle2, ExternalLink, Eye } from "lucide-react";
+import { useState } from "react";
+import { X, Shield, AlertOctagon, FileText, Send, CheckCircle2, ExternalLink, Eye, Loader2 } from "lucide-react";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:7071/api";
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 
 function getScoreColor(score) {
   if (score >= 85) return "text-red-400";
@@ -21,6 +25,18 @@ function getSeverityBadge(severity) {
     LOW: "bg-slate-500/20 text-slate-300 border-slate-500/40"
   };
   return map[severity] || map.LOW;
+}
+
+function getStatusBadge(status) {
+  const map = {
+    new: { label: "NUEVO", color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40" },
+    reviewed: { label: "REVISADO", color: "bg-slate-500/20 text-slate-300 border-slate-500/40" },
+    false_positive: { label: "FALSO POSITIVO", color: "bg-green-500/20 text-green-300 border-green-500/40" },
+    escalated: { label: "ESCALADO", color: "bg-orange-500/20 text-orange-300 border-orange-500/40" },
+    reported: { label: "REPORTADO", color: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40" },
+    resolved: { label: "RESUELTO", color: "bg-green-500/20 text-green-300 border-green-500/40" }
+  };
+  return map[status] || map.new;
 }
 
 function formatNumber(num) {
@@ -48,13 +64,86 @@ function formatDate(iso) {
 export default function FindingDossier(props) {
   const finding = props.finding;
   const onClose = props.onClose;
+  const onUpdate = props.onUpdate;
+
+  const [loadingAction, setLoadingAction] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [currentStatus, setCurrentStatus] = useState(finding ? finding.status || "new" : "new");
 
   if (!finding) return null;
 
   const scoreColor = getScoreColor(finding.score);
   const scoreBarColor = getScoreBarColor(finding.score);
   const severityBadge = getSeverityBadge(finding.severity);
+  const statusInfo = getStatusBadge(currentStatus);
   const hasThumbnail = finding.video_thumbnail && !finding.azure_filter_triggered;
+
+  function showToast(type, message) {
+    setToast({ type: type, message: message });
+    setTimeout(function() { setToast(null); }, 3500);
+  }
+
+  async function updateStatus(newStatus, actionLabel) {
+    setLoadingAction(newStatus);
+    try {
+      const keyParam = API_KEY ? "?code=" + API_KEY : "";
+      const response = await fetch(API_BASE + "/update-finding-status" + keyParam, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          finding_id: finding.id,
+          new_status: newStatus,
+          reviewed_by: "admin"
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      
+      setCurrentStatus(newStatus);
+      showToast("success", actionLabel);
+      
+      if (onUpdate) {
+        setTimeout(function() { onUpdate(); }, 800);
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      showToast("error", "Error: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  function generateDossier() {
+    const keyParam = API_KEY ? "&code=" + API_KEY : "";
+    const url = API_BASE + "/generate-dossier?finding_id=" + finding.id + keyParam;
+    window.open(url, "_blank");
+    showToast("info", "Dossier generado en nueva pestana");
+  }
+
+  function reportToTikTok() {
+    if (finding.video_url) {
+      window.open(finding.video_url, "_blank");
+      showToast("info", "Abriendo video en TikTok para reportar");
+      setTimeout(function() {
+        updateStatus("reported", "Marcado como reportado a TikTok");
+      }, 1000);
+    } else {
+      showToast("error", "No hay URL del video para reportar");
+    }
+  }
+
+  function escalateAuthorities() {
+    generateDossier();
+    setTimeout(function() {
+      updateStatus("escalated", "Escalado a autoridades + dossier generado");
+    }, 500);
+  }
+
+  function markFalsePositive() {
+    updateStatus("false_positive", "Marcado como falso positivo");
+  }
 
   return (
     <div
@@ -65,6 +154,16 @@ export default function FindingDossier(props) {
         className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl"
         onClick={function(e) { e.stopPropagation(); }}
       >
+        {toast ? (
+          <div className={"fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-2xl border " + (
+            toast.type === "success" ? "bg-green-500/90 border-green-400 text-white" :
+            toast.type === "error" ? "bg-red-500/90 border-red-400 text-white" :
+            "bg-cyan-500/90 border-cyan-400 text-white"
+          )}>
+            <div className="font-semibold text-sm">{toast.message}</div>
+          </div>
+        ) : null}
+
         <div className="sticky top-0 z-10 bg-gradient-to-r from-fuchsia-900/40 via-slate-950 to-cyan-900/30 backdrop-blur-md border-b border-slate-800 p-5">
           <div className="flex items-start justify-between">
             <div>
@@ -77,9 +176,12 @@ export default function FindingDossier(props) {
               <h2 className="text-2xl font-bold text-slate-100">
                 {"@" + finding.author_name}
               </h2>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <span className={"px-2 py-0.5 rounded text-xs font-bold border " + severityBadge}>
                   {finding.severity || "-"}
+                </span>
+                <span className={"px-2 py-0.5 rounded text-xs font-bold border " + statusInfo.color}>
+                  {statusInfo.label}
                 </span>
                 <span className="text-xs text-slate-400">
                   Detectado: {formatDate(finding.detected_at)}
@@ -176,23 +278,6 @@ export default function FindingDossier(props) {
                 </div>
               </div>
             ) : null}
-
-            {finding.mexican_context_markers && finding.mexican_context_markers.length > 0 ? (
-              <div className="mt-4">
-                <div className="text-xs text-slate-400 mb-2 font-semibold">
-                  MARKERS CONTEXTO MEXICANO:
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {finding.mexican_context_markers.map(function(m, i) {
-                    return (
-                      <span key={i} className="px-2.5 py-1 bg-amber-500/20 text-amber-200 text-xs rounded-lg border border-amber-500/30">
-                        {m}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -245,12 +330,6 @@ export default function FindingDossier(props) {
                   </div>
                 </div>
               ) : null}
-              {finding.music_detected ? (
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">Musica:</div>
-                  <div className="text-slate-300">{finding.music_detected}</div>
-                </div>
-              ) : null}
               {finding.video_url ? (
                 <div>
                   <a
@@ -280,20 +359,36 @@ export default function FindingDossier(props) {
         </div>
 
         <div className="sticky bottom-0 bg-slate-950 border-t border-slate-800 p-4 flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-semibold rounded-lg transition">
+          <button
+            onClick={generateDossier}
+            disabled={loadingAction !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+          >
             <FileText size={16} />
             Generar Reporte PDF
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-lg transition">
-            <Send size={16} />
+          <button
+            onClick={reportToTikTok}
+            disabled={loadingAction !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+          >
+            {loadingAction === "reported" ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Reportar a TikTok
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold rounded-lg transition">
-            <AlertOctagon size={16} />
+          <button
+            onClick={escalateAuthorities}
+            disabled={loadingAction !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+          >
+            {loadingAction === "escalated" ? <Loader2 size={16} className="animate-spin" /> : <AlertOctagon size={16} />}
             Escalar a Autoridades
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg transition">
-            <CheckCircle2 size={16} />
+          <button
+            onClick={markFalsePositive}
+            disabled={loadingAction !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 text-sm rounded-lg transition"
+          >
+            {loadingAction === "false_positive" ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
             Falso Positivo
           </button>
         </div>
